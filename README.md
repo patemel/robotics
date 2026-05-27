@@ -1,72 +1,93 @@
-# robotics
-έργο ότι νάνε 
 from machine import Pin, PWM
-import time
+from utime import sleep_ms
 
-SENSORS
-left = Pin(16, Pin.IN)
-center = Pin(17, Pin.IN)
-right = Pin(18, Pin.IN)
+# --- ΠΙΝΣ ΜΟΤΕΡ ---
+ENA = PWM(Pin(19))
+IN1 = Pin(6, Pin.OUT)
+IN2 = Pin(7, Pin.OUT)
 
-MOTORS
-in1 = Pin(6, Pin.OUT)
-in2 = Pin(7, Pin.OUT)
-in3 = Pin(8, Pin.OUT)
-in4 = Pin(9, Pin.OUT)
-ena = PWM(Pin(10))
-enb = PWM(Pin(11))
-ena.freq(1000)
-enb.freq(1000)
+IN3 = Pin(8, Pin.OUT)
+IN4 = Pin(9, Pin.OUT)
+ENB = PWM(Pin(20))
 
-ΡΥΘΜΙΣΕΙΣ
-FAST = 45000      # βασική ταχύτητα
-TURN = 25000      # στροφή
-STOP = 0          # σταμάτα
+ENA.freq(20000)
+ENB.freq(20000)
 
-BLACK_LINE = 0    # μαύρη γραμμή = 0
+# ΣΚΛΗΡΟ RESET ΣΤΑ ΜΟΤΕΡ ΓΙΑ ΝΑ ΜΗΝ ΤΡΕΧΟΥΝ ΜΟΝΑ ΤΟΥΣ
+IN1.low()
+IN2.low()
+IN3.low()
+IN4.low()
+ENA.duty_u16(0)
+ENB.duty_u16(0)
 
-def go_forward():
-    in1.value(1); in2.value(0)
-    in3.value(1); in4.value(0)
+base_speed = 38000
+turn_speed = 26000
 
-def motor_stop():
-    in1.value(0); in2.value(0)
-    in3.value(0); in4.value(0)
-    ena.duty_u16(0)
-    enb.duty_u16(0)
+# --- ΠΙΝΣ ΑΙΣΘΗΤΗΡΩΝ ---
+LEFT = Pin(16, Pin.IN)
+MID = Pin(14, Pin.IN)
+RIGHT = Pin(13, Pin.IN)
 
-def set_speed(left_speed, right_speed):
-    ena.duty_u16(left_speed)
-    enb.duty_u16(right_speed)
+def motor_speed(left, right):
+    ENA.duty_u16(left)
+    ENB.duty_u16(right)
 
-print("🏁 LINE FOLLOWER vFINAL")
-print("Μαύρη γραμμή = [010]")
-print("Αποθήκευσε ως main.py για μπαταρία!")
+# 🚀 ΚΙΝΗΣΗ ΜΠΡΟΣΤΑ (Κανονική κατεύθυνση)
+def forward():
+    motor_speed(base_speed, base_speed)
+    IN1.low()    # Αριστερή ρόδα -> Μπροστά
+    IN2.high()   
+    IN3.low()    # Δεξιά ρόδα -> Μπροστά
+    IN4.high()   
 
+# ↪️ Ο ΔΕΞΙΟΣ βρήκε γραμμή -> Δουλεύει ΜΟΝΟ η ΑΡΙΣΤΕΡΗ ρόδα (Στροφή δεξιά)
+def slight_left():
+    motor_speed(base_speed, 0) # Μηδέν γκάζι στη δεξιά
+    IN1.low()    # Αριστερή ρόδα -> Μπροστά
+    IN2.low()   
+    IN3.low()    # Δεξιά ρόδα -> Σβηστή
+    IN4.high()    
+
+# ↩️ Ο ΑΡΙΣΤΕΡΟΣ βρήκε γραμμή -> Δουλεύει ΜΟΝΟ η ΔΕΞΙΑ ρόδα (Στροφή αριστερά)
+def slight_right():
+    motor_speed(0, base_speed) # Μηδέν γκάζι στην αριστερή
+    IN1.low()    # Αριστερή ρόδα -> Σβηστή
+    IN2.high()    
+    IN3.low()    # Δεξιά ρόδα -> Μπροστά
+    IN4.low()
+# 🛑 ΣΤΑΜΑΤΗΜΑ (Κλείνουν όλα)
+def stop():
+    motor_speed(0, 0)
+    IN1.low()
+    IN2.low()
+    IN3.low()
+    IN4.low()
+
+# === ΕΓΚΕΦΑΛΟΣ (ΛΟΓΙΚΗ: 1 = ΜΑΥΡΟ, 0 = ΑΣΠΡΟ) ===
 while True:
-    L = left.value()
-    C = center.value()
-    R = right.value()
+    L = LEFT.value()
+    M = MID.value()
+    R = RIGHT.value()
 
-DEBUG (αφαίρεσε # για να κρύψεις)
-    print(f"[{L}{C}{R}]", end='\r')
+    # 1. Στο λευκό πλακάκι (Όλα μηδέν -> 0, 0, 0) -> ΤΩΡΑ ΣΤΑΜΑΤΑΕΙ ΚΑΝΟΝΙΚΑ
+    if [L, M, R] == [0, 0, 0]:
+        stop()
 
-    go_forward()
+    # 2. Κέντρο (Μόνο ο μεσαίος βλέπει μαύρο -> 1) -> Πάει μπροστά
+    elif [L, M, R] == [0, 1, 0]:
+        forward()
 
-ΛΟΓΙΚΗ
-    if C == BLACK_LINE:              # ΚΕΝΤΡΟ στη γραμμή
-        set_speed(FAST, FAST)
+    # 3. Η γραμμή έφυγε αριστερά (Αριστερός βρήκε μαύρο -> 1) -> Στρίψε δεξιά
+    elif [L, M, R] == [1, 0, 0] or [L, M, R] == [1, 1, 0]:
+        slight_right()   
 
-    elif L == BLACK_LINE:            # Γραμμή ΑΡΙΣΤΕΡΑ → στρίψε ΔΕΞΙΑ
-        set_speed(TURN, FAST)
+    # 4. Η γραμμή έφυγε δεξιά (Δεξιός βρήκε μαύρο -> 1) -> Στρίψε αριστερά
+    elif [L, M, R] == [0, 0, 1] or [L, M, R] == [0, 1, 1]:
+        slight_left()    
 
-    elif R == BLACK_LINE:            # Γραμμή ΔΕΞΙΑ → στρίψε ΑΡΙΣΤΕΡΑ
-        set_speed(FAST, TURN)
+    # 5. Αν βρεθεί ολόκληρο πάνω σε μαύρο (1, 1, 1) -> Προχώρα μπροστά
+    elif [L, M, R] == [1, 1, 1]:
+        forward()
 
-    elif L == BLACK_LINE and R == BLACK_LINE:  # ΣΤΑΥΡΟΣ
-        set_speed(FAST, FAST)
-
-    else:                            # ΧΑΜΕΝΟ (άσπρο/αέρας)
-        set_speed(STOP, STOP)
-
-    time.sleep(0.005)
+    sleep_ms(10)
